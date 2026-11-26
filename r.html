@@ -85,9 +85,10 @@
       const body = el("div");
       body.append(el("div", "kind", [p.b, TYPES[p.t] || ""].filter(Boolean).join(" · ")));
       body.append(el("div", "product", p.n));
-      if (p.k && p.k.length) {
+      const tags = p.a || [];
+      if (tags.length) {
         const chips = el("div", "chips");
-        p.k.slice(0, 4).forEach(k => chips.append(el("span", "chip", k)));
+        tags.slice(0, 3).forEach(t => chips.append(el("span", "chip", t)));
         body.append(chips);
       }
       if (number === null && p.u) body.append(el("div", "when", p.u));
@@ -134,6 +135,8 @@
     }
 
     render();
+    // A different link opened in the same tab only changes the hash, which doesn't reload the page.
+    window.addEventListener("hashchange", () => location.reload());
   </script>
 </body>
 </html>
