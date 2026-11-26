@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>A Layer routine</title>
+  <meta name="description" content="A skincare routine shared from Layer: the products and the order, morning and night.">
+  <meta property="og:title" content="A skincare routine, shared from Layer">
+  <meta property="og:description" content="See the products and the order, morning and night.">
+  <meta property="og:image" content="https://mark22d-kaijunumber8.github.io/layer/icon.png">
+  <meta name="robots" content="noindex">
+  <link rel="icon" href="icon.png">
+  <link rel="stylesheet" href="style.css">
+  <style>
+    .routine { list-style: none; padding: 0; margin: 0; }
+    .routine li { display: flex; gap: 14px; padding: 14px 0; border-top: 1px solid var(--hairline); }
+    .routine li:first-child { border-top: 0; }
+    .num { flex: none; width: 26px; height: 26px; border-radius: 13px; background: var(--hairline); color: var(--muted);
+           font-size: 13px; font-weight: 600; display: grid; place-items: center; margin-top: 2px; }
+    .kind { color: var(--muted); font-size: 14px; }
+    .product { font-weight: 600; }
+    .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+    .chip { font-size: 13px; color: var(--muted); background: var(--hairline); border-radius: 999px; padding: 2px 10px; }
+    .when { color: var(--muted); font-size: 14px; margin-top: 4px; }
+    .card h2 { margin-top: 20px; }
+    .actions { display: flex; flex-wrap: wrap; gap: 12px; margin: 8px 0 32px; }
+    .button { display: inline-block; padding: 12px 20px; border-radius: 999px; font-weight: 600; text-decoration: none;
+              background: var(--accent); color: #fff; }
+    .button.secondary { background: var(--hairline); color: var(--ink); }
+    [hidden] { display: none !important; }
+  </style>
+</head>
+<body>
+  <main>
+    <nav>
+      <a href="./">Layer</a>
+      <a href="support.html">Support</a>
+      <a href="privacy.html">Privacy</a>
+    </nav>
+
+    <img class="icon" src="icon.png" alt="The Layer app icon">
+    <h1 id="title">A Layer routine</h1>
+    <p class="lede" id="lede">A skincare routine shared from Layer.</p>
+
+    <div class="actions" id="actions" hidden>
+      <a class="button" href="https://apps.apple.com/app/id6836648534">Get Layer on the App Store</a>
+      <a class="button secondary" id="open">Open in Layer</a>
+    </div>
+
+    <div id="routine"></div>
+
+    <p class="meta" id="error" hidden>This link looks incomplete. Ask the person who sent it to share it again from Layer.</p>
+    <p class="meta" id="note" hidden>Layer builds a morning and evening routine from the products you already own. This page reads the routine from the link itself: nothing was uploaded, and Layer keeps no copy. <a href="privacy.html">Privacy</a></p>
+
+    <footer>&copy; 2026 Lun Do</footer>
+  </main>
+
+  <script>
+    const TYPES = {
+      cleanser: "Cleanser", toner: "Toner", exfoliant: "Exfoliant", serum: "Serum", treatment: "Treatment",
+      spotTreatment: "Spot treatment", eyeCream: "Eye cream", moisturizer: "Moisturizer", faceOil: "Face oil",
+      sunscreen: "Sunscreen", mask: "Mask"
+    };
+    const NIGHTS = { exfoliation: "Exfoliation night", retinoid: "Retinoid night", recovery: "Recovery night", daily: "Evening" };
+
+    async function decode(fragment) {
+      if (!fragment.startsWith("1")) throw new Error("version");
+      let b64 = fragment.slice(1).replace(/-/g, "+").replace(/_/g, "/");
+      b64 += "=".repeat((4 - b64.length % 4) % 4);
+      const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+      const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
+      return JSON.parse(await new Response(stream).text());
+    }
+
+    function el(tag, className, text) {
+      const node = document.createElement(tag);
+      if (className) node.className = className;
+      if (text !== undefined) node.textContent = text;
+      return node;
+    }
+
+    function productItem(p, number) {
+      const li = el("li");
+      li.append(el("span", "num", number === null ? "·" : String(number)));
+      const body = el("div");
+      body.append(el("div", "kind", [p.b, TYPES[p.t] || ""].filter(Boolean).join(" · ")));
+      body.append(el("div", "product", p.n));
+      if (p.k && p.k.length) {
+        const chips = el("div", "chips");
+        p.k.slice(0, 4).forEach(k => chips.append(el("span", "chip", k)));
+        body.append(chips);
+      }
+      if (number === null && p.u) body.append(el("div", "when", p.u));
+      li.append(body);
+      return li;
+    }
+
+    function section(title, detail, indexes, products, numbered) {
+      const card = el("div", "card");
+      card.append(el("h2", null, title));
+      if (detail) card.append(el("p", "meta", detail));
+      const list = el(numbered ? "ol" : "ul", "routine");
+      indexes.forEach((i, n) => list.append(productItem(products[i], numbered ? n + 1 : null)));
+      card.append(list);
+      return card;
+    }
+
+    async function render() {
+      const fragment = location.hash.slice(1);
+      if (!fragment) { document.getElementById("error").hidden = false; return; }
+      let r;
+      try { r = await decode(fragment); } catch { document.getElementById("error").hidden = false; return; }
+      const products = r.p || [];
+      const valid = i => Number.isInteger(i) && i >= 0 && i < products.length;
+      const morning = (r.m || []).filter(valid);
+      const nights = (r.e || []).map(n => ({ t: n.t, s: (n.s || []).filter(valid) })).filter(n => n.s.length);
+
+      const title = r.f ? `${r.f}’s routine` : "A Layer routine";
+      document.title = `${title} · Layer`;
+      document.getElementById("title").textContent = title;
+      document.getElementById("lede").textContent =
+        `${products.length} ${products.length === 1 ? "product" : "products"}, in the order ${r.f || "they"} ${r.f ? "uses" : "use"} them. Shared from Layer.`;
+      document.getElementById("open").href = "layerskin://r#" + fragment;
+      document.getElementById("actions").hidden = false;
+      document.getElementById("note").hidden = false;
+
+      const root = document.getElementById("routine");
+      if (morning.length) root.append(section("Morning", null, morning, products, true));
+      const rotating = nights.length > 1 ? "Evenings take turns between these nights, so strong actives never share one." : null;
+      nights.forEach((n, i) => root.append(section(NIGHTS[n.t] || "Evening", i === 0 ? rotating : null, n.s, products, true)));
+      const used = new Set(morning.concat(...nights.map(n => n.s)));
+      const others = products.map((_, i) => i).filter(i => !used.has(i));
+      if (others.length) root.append(section("Also on the shelf", null, others, products, false));
+    }
+
+    render();
+  </script>
+</body>
+</html>
