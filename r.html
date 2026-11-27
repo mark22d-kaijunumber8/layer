@@ -23,6 +23,7 @@
     .chip { font-size: 13px; color: var(--muted); background: var(--hairline); border-radius: 999px; padding: 2px 10px; }
     .when { color: var(--muted); font-size: 14px; margin-top: 4px; }
     .card h2 { margin-top: 20px; }
+    .card > .chips { margin: 4px 0 12px; }
     .actions { display: flex; flex-wrap: wrap; gap: 12px; margin: 8px 0 32px; }
     .button { display: inline-block; padding: 12px 20px; border-radius: 999px; font-weight: 600; text-decoration: none;
               background: var(--accent); color: #fff; }
@@ -79,31 +80,39 @@
       return node;
     }
 
-    function productItem(p, number) {
+    const SHORT = { exfoliation: "Exfoliate", retinoid: "Retinoid", recovery: "Recover", daily: "Evening" };
+
+    // One row: the step number, the product, and how it's used.
+    function stepItem(p, number, detail) {
       const li = el("li");
       li.append(el("span", "num", number === null ? "·" : String(number)));
       const body = el("div");
       body.append(el("div", "kind", [p.b, TYPES[p.t] || ""].filter(Boolean).join(" · ")));
       body.append(el("div", "product", p.n));
+      if (detail) body.append(el("div", "when", detail));
       const tags = p.a || [];
       if (tags.length) {
         const chips = el("div", "chips");
         tags.slice(0, 3).forEach(t => chips.append(el("span", "chip", t)));
         body.append(chips);
       }
-      if (number === null && p.u) body.append(el("div", "when", p.u));
       li.append(body);
       return li;
     }
 
-    function section(title, detail, indexes, products, numbered) {
-      const card = el("div", "card");
-      card.append(el("h2", null, title));
-      if (detail) card.append(el("p", "meta", detail));
-      const list = el(numbered ? "ol" : "ul", "routine");
-      indexes.forEach((i, n) => list.append(productItem(products[i], numbered ? n + 1 : null)));
-      card.append(list);
-      return card;
+    function card(title, detail) {
+      const node = el("div", "card");
+      node.append(el("h2", null, title));
+      if (detail) node.append(el("p", "meta", detail));
+      return node;
+    }
+
+    function stepsCard(title, steps, products) {
+      const node = card(title);
+      const list = el("ol", "routine");
+      steps.forEach((s, n) => list.append(stepItem(products[s.p], n + 1, [s.l, s.h].filter(Boolean).join(" · "))));
+      node.append(list);
+      return node;
     }
 
     async function render() {
@@ -112,26 +121,39 @@
       let r;
       try { r = await decode(fragment); } catch { document.getElementById("error").hidden = false; return; }
       const products = r.p || [];
-      const valid = i => Number.isInteger(i) && i >= 0 && i < products.length;
+      const valid = s => s && Number.isInteger(s.p) && s.p >= 0 && s.p < products.length;
       const morning = (r.m || []).filter(valid);
       const nights = (r.e || []).map(n => ({ t: n.t, s: (n.s || []).filter(valid) })).filter(n => n.s.length);
+      const cycle = (r.y || []).filter(t => SHORT[t]);
 
       const title = r.f ? `${r.f}’s routine` : "A Layer routine";
       document.title = `${title} · Layer`;
       document.getElementById("title").textContent = title;
       document.getElementById("lede").textContent =
-        `${products.length} ${products.length === 1 ? "product" : "products"}, in the order ${r.f || "they"} ${r.f ? "uses" : "use"} them. Shared from Layer.`;
+        `${products.length} ${products.length === 1 ? "product" : "products"}, step by step, morning and night. Shared from Layer.`;
       document.getElementById("open").href = "layerskin://r#" + fragment;
       document.getElementById("actions").hidden = false;
       document.getElementById("note").hidden = false;
 
       const root = document.getElementById("routine");
-      if (morning.length) root.append(section("Morning", null, morning, products, true));
-      const rotating = nights.length > 1 ? "Evenings take turns between these nights, so strong actives never share one." : null;
-      nights.forEach((n, i) => root.append(section(NIGHTS[n.t] || "Evening", i === 0 ? rotating : null, n.s, products, true)));
-      const used = new Set(morning.concat(...nights.map(n => n.s)));
+      if (cycle.length > 1) {
+        const node = card("Skin cycle", `Evenings follow a ${cycle.length}-night cycle, so strong actives never share a night.`);
+        const chips = el("div", "chips");
+        cycle.forEach((t, i) => chips.append(el("span", "chip", `${i + 1} · ${SHORT[t]}`)));
+        node.append(chips);
+        root.append(node);
+      }
+      if (morning.length) root.append(stepsCard("Morning", morning, products));
+      nights.forEach(n => root.append(stepsCard(NIGHTS[n.t] || "Evening", n.s, products)));
+      const used = new Set(morning.concat(...nights.map(n => n.s)).map(s => s.p));
       const others = products.map((_, i) => i).filter(i => !used.has(i));
-      if (others.length) root.append(section("Also on the shelf", null, others, products, false));
+      if (others.length) {
+        const node = card("Also on the shelf");
+        const list = el("ul", "routine");
+        others.forEach(i => list.append(stepItem(products[i], null, products[i].u)));
+        node.append(list);
+        root.append(node);
+      }
     }
 
     render();
